@@ -77,7 +77,9 @@ Esse valor deve ser o mesmo configurado no GitHub Webhook.
 Logs do processamento aparecerão nesse terminal.
 
 # Para iniciar o frontend:
--     cd frontend /n npm install /n npm run dev    
+-     cd frontend
+-     npm install
+-     npm run dev    
 
 
 # 5. Testando com GitHub
