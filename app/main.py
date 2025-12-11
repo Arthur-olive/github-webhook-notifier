@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Header, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import hmac, hashlib, json, logging, traceback
 from .notifier import send_telegram_message
 from .config import GITHUB_WEBHOOK_SECRET
@@ -30,6 +31,19 @@ def verify_signature(request_body: bytes, signature_header: str | None, secret: 
 
 app = FastAPI()
 
+# CORS — permite que o frontend (Vite) faça requests durante o desenvolvimento
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"],  # "*" aceitável em dev
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Armazenamento em memória (dev). Mantemos apenas últimos N eventos.
+MAX_EVENTS = 200
+events_log: list[dict] = []
+
 @app.post("/webhook/github")
 async def github_webhook(request: Request,
                          x_hub_signature_256: str | None = Header(None),
@@ -48,6 +62,7 @@ async def github_webhook(request: Request,
         payload = json.loads(body.decode("utf-8"))
         event = x_github_event or "unknown"
 
+        # montar texto (mantive sua lógica)
         if event == "push":
             repo = payload.get("repository", {}).get("full_name")
             pusher = payload.get("pusher", {}).get("name")
@@ -68,9 +83,27 @@ async def github_webhook(request: Request,
         else:
             logger.info("Evento não tratado: %s", event)
 
+        # --- salvar no log em memória para o frontend ---
+        try:
+            events_log.append({
+                "event": event,
+                "payload": payload
+            })
+            # manter tamanho do buffer
+            if len(events_log) > MAX_EVENTS:
+                del events_log[0: len(events_log) - MAX_EVENTS]
+        except Exception:
+            logger.exception("Falha ao adicionar evento ao events_log")
+
         return {"status": "ok"}
 
     except Exception as exc:
         tb = traceback.format_exc()
         logger.error("Erro ao processar webhook: %s\nTraceback:\n%s", exc, tb)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/events")
+def get_events():
+
+    return events_log
